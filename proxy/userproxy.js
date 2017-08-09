@@ -2,6 +2,7 @@ var dbUtil = require('../util/dbutil.js');
 var logger = require('../util/logutil.js');
 var socketProxy = require('./socketproxy.js');
 var teamProxy = require('./teamProxy.js');
+var async = require('async');
 
 exports.init = function () {
     this.users = {};
@@ -21,8 +22,8 @@ exports.addUser = function (user) {
 exports.handleLogin = function (socket) {
     socket.on('login', function (data) {
         logger.listenerLog('login');
-        dbUtil.findUserByNick(data.userName, function (user) {
-            if (!user || user.password != data.password) {
+        dbUtil.findUserByAccount(data.userName, function (user) {
+            if (!user || user.user_password != data.password) {
                 // 登录失败
                 socket.emit('feedback', {
                     errorCode: 1,
@@ -33,38 +34,66 @@ exports.handleLogin = function (socket) {
             } else {
                 // 登陆成功
                 socketProxy.add(user.user_id, socket);
-                // 先通过用户id找到角色
-                dbUtil.findRoleInfoByUserId(user.user_id, function (role) {
-                    dbUtil.findFriendListByUserId(user.user_id, function (friendList) {
-                        var feedback = {
-                            errorCode: 0,
-                            type: 'LOGINRESULT',
-                            text: "登陆成功",
-                            extension: {
-                                name: user.nick_name,
-                                userId: user.user_id,
-                                avatarId: user.icon,
-                                strength: {
-                                    growth: role.growth,
-                                    kda: role.kda,
-                                    averageGoldEarned: role.average_gold_earned,
-                                    averageTurretsKilled: role.average_turrets_killed,
-                                    averageLiving: role.average_living,
-                                    averageDamageTaken: role.average_damage_taken
-                                },
-                                wealth: user.credit_worthiness,
-                                online: true,
-                                status: 'IDLE',
-                                friendList: friendList,
-                                relationMap: {
-                                    currentTeamId: null,
-                                    currentGameId: null
-                                }
+                async.waterfall([
+                    function(callback){
+                        dbUtil.findUserIconById(user.user_id, function(iconId){
+                            var userInfo = {};
+                            userInfo.userId = user.user_id;
+                            userInfo.userNickname = user.user_nickname;
+                            userInfo.userIconId = iconId.icon_id;
+                            callback(null, userInfo);
+                        });
+                    },
+                    function(userInfo, callback){
+                        dbUtil.findFriendListByUserId(userInfo.userId, function (friendList) {
+                            userInfo.friendList = friendList;
+                            callback(null, userInfo);
+                        });
+                    },
+                    function(userInfo, callback){
+                        dbUtil.findStrengthInfoByUserId(userInfo.userId, function (strengthInfo) {
+                            userInfo.strengthInfo = strengthInfo;
+                            callback(null, userInfo);
+                        });
+                    },
+                    function(userInfo, callback){
+                        dbUtil.findUserWealthByUserId(userInfo.userId, function (wealthInfo) {
+                            userInfo.wealth = wealthInfo.bullup_currency_amount;
+                            callback(null, userInfo);
+                        });
+                    }
+                ], function(err, userInfo){
+                    var userStrength = userInfo.strengthInfo;
+                    var kda = ((userStrength.bullup_strength_k + userStrength.bullup_strength_a) / (userStrength.bullup_strength_d + 1.2)).toFixed(1);
+                    var feedback = {
+                        errorCode: 0,
+                        type: 'LOGINRESULT',
+                        text: "登录成功",
+                        extension: {
+                            name: userInfo.userNickname,
+                            userId: userInfo.userId,
+                            avatarId: userInfo.userIconId,
+                            strength: {
+                                kda: kda,
+                                averageGoldEarned: userStrength.bullup_strength_gold,
+                                averageTurretsKilled: userStrength.bullup_strength_tower,
+                                averageDamage: userStrength.bullup_strength_damage,
+                                averageDamageTaken: userStrength.bullup_strength_damage_taken,
+                                averageHeal: userStrength.bullup_strength_heal,
+                                score: userStrength.bullup_strength_score
+                            },
+                            wealth: userInfo.wealth,
+                            online: true,
+                            status: 'IDLE',
+                            friendList: userInfo.friendList,
+                            relationMap: {
+                                currentTeamId: null,
+                                currentGameId: null
                             }
-                        };
-                        exports.addUser(feedback.extension);
-                        socket.emit('feedback', feedback);
-                    });
+                        }
+                    };
+                    exports.addUser(feedback.extension);
+                    socket.emit('feedback', feedback);
                 });
             }
         });
@@ -167,3 +196,66 @@ exports.changeUserStatus = function (userId, status) {
     this.users[userId].status = status;
 }
 
+exports.handleRankRequest = function (socket){
+    socket.on('rankRequest', function(request){
+        var userId = socketProxy.mapUserIdToSocket(socket.id);
+        dbUtil.getStrengthScoreRank(userId,function(strengthRankList){
+            dbUtil.getWealthRank(userId,function(wealthRankList){
+                 socket.emit('feedback', {
+                    errorCode: 0,
+                    text: '获取排名成功',
+                    type: 'STRENGTHRANKRESULT',
+                    extension: {
+                        "strengthRankList": strengthRankList,
+                        "wealthRankList": wealthRankList
+                    }
+                });
+            });
+        });
+    });
+}
+
+
+exports.handleLOLBind = function(socket){
+    socket.on('lolBindRequest',function(request){
+        var userId = request.userId;
+        var lolAccount = request.lolAccount;
+        var lolNickname = request.lolNickname;
+        var lolArea = request.lolArea;
+        async.waterfall([
+            function(callback){
+                dbUtil.validateBindInfo(userId, lolAccount, function(bindValidity){
+                    //如果该用户在该大区已绑定了账号  或者该大区的账号已被绑定  则拒绝绑定
+                    var feedback = {};
+                    if(bindValidity.value != 'true'){
+                        feedback.text = '绑定失败';
+                        feedback.type = 'LOLBINDRESULT';
+                        switch(bindValidity.code){
+                            case 1:{
+                                feedback.errorCode = 1;
+                                feedback.extension = {};
+                                feedback.extensio.tips = '该英雄联盟账号已被绑定';
+                                break;
+                            }
+                            case 2:{
+                                feedback.errorCode = 2;
+                                feedback.extension = {};
+                                feedback.extensio.tips = '您已经绑定了英雄联盟账号';
+                                break;
+                            }
+                        }
+                        socket.emit('feedback', feedback);
+                        callback('error', null);
+                    }else{
+                        callback(null, null);
+                    }
+                });   
+            },
+            function(blankData, callback){
+                
+            }
+        ],function(err,result){
+
+        });
+    });
+}

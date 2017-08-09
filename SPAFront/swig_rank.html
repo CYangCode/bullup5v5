@@ -1,4 +1,28 @@
 <div class="container">
+  <div class="user_rank row">
+	<div class="col s4">
+	  <label class="rank-title">
+		个人排名
+	  </label>
+	</div>
+	
+	<div class="col s4">
+	  <label class="rank-title">财富排名</label>
+	  <div class="rank-value">
+		<!-- 财富排名 -->
+		123
+	  </div>
+	</div>
+
+	<div class="col s4">
+	  <label class="rank-title">战斗力排名</label>
+	  <div class="rank-value">
+		<!-- 战斗力排名 -->
+		123
+	  </div>
+	</div>
+  </div>
+  
   <div class="col s12">
     <ul class="tabs tabs-fixed-width">
       <li class="tab col s3"><a class="active" href="#wealth_list">财富排行</a></li>
@@ -6,15 +30,15 @@
     </ul>
   </div>
   <div id="wealth_list" class="col s12">
-    {% if ranked_list.wealth_ranked_list %}
+    {% if wealthRankList %}
 	  <ul class="collection">
-		{% for player in ranked_list.wealth_ranked_list %}
+		{% for player in wealthRankList %}
 		  <li class="collection-item avatar">
-			<img src="./media/imgs/timg-2.jpeg" alt="" class="circle">
-			<span class="title">{{ player.name }}</span>
-			<p>{{ player.wealth }} <br> {{ player.cap }}
+			<img src="./media/user_icon/{{ player.icon_id }}.png" alt="" class="circle">
+			<span class="title">{{ player.user_nickname }}</span>
+			<p>{{ player.user_wealth }}
 			</p>
-			<div class="secondary-content rank-number right">1</div>
+			<div class="secondary-content rank-number right">{{loop.index}}</div>
 		  </li>
 		{% endfor %}
 	  </ul>
@@ -25,15 +49,15 @@
   </div>
 
   <div id="cap_list" class="col s12">
-	{% if ranked_list.cap_ranked_list %}
+	{% if strengthRankList %}
 	  <ul class="collection">
-		{% for player in ranked_list.cap_ranked_list %}
+		{% for player in strengthRankList %}
 		  <li class="collection-item avatar">
-			<img src="./media/imgs/timg-2.jpeg" alt="" class="circle">
-			<span class="title">{{ player.name }}</span>
-			<p>{{ player.wealth }} <br> {{ player.cap }}
+			<img src="./media/user_icon/{{ player.icon_id }}.png" alt="" class="circle">
+			<span class="title">{{ player.user_nickname }}</span>
+			<p>{{ player.user_strength }}
 			</p>
-			<div class="secondary-content rank-number right">1</div>
+			<div class="secondary-content rank-number right">{{loop.index}}</div>
 		  </li>
 		{% endfor %}
 	  </ul>

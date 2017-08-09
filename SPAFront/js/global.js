@@ -19,13 +19,9 @@ $().ready(function(){
 
 	$("#link_modal").modal();
 
-	$(".button-collapse").sideNav();
+	$(".user-collapse").sideNav();
 	
     $('ul.tabs').tabs();
-
-    $('#team-detail-modal').modal();
-
-    $('#waiting-modal').modal();
 	
 	$('#message_collapsible').collapsible();
     // If waiting mode ends, close detail modal and open the created room modal
