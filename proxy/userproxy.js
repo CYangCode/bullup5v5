@@ -64,7 +64,6 @@ exports.handleLogin = function (socket) {
                     }
                 ], function(err, userInfo){
                     var userStrength = userInfo.strengthInfo;
-                    var kda = ((userStrength.bullup_strength_k + userStrength.bullup_strength_a) / (userStrength.bullup_strength_d + 1.2)).toFixed(1);
                     var feedback = {
                         errorCode: 0,
                         type: 'LOGINRESULT',
@@ -73,15 +72,6 @@ exports.handleLogin = function (socket) {
                             name: userInfo.userNickname,
                             userId: userInfo.userId,
                             avatarId: userInfo.userIconId,
-                            strength: {
-                                kda: kda,
-                                averageGoldEarned: userStrength.bullup_strength_gold,
-                                averageTurretsKilled: userStrength.bullup_strength_tower,
-                                averageDamage: userStrength.bullup_strength_damage,
-                                averageDamageTaken: userStrength.bullup_strength_damage_taken,
-                                averageHeal: userStrength.bullup_strength_heal,
-                                score: userStrength.bullup_strength_score
-                            },
                             wealth: userInfo.wealth,
                             online: true,
                             status: 'IDLE',
@@ -92,6 +82,21 @@ exports.handleLogin = function (socket) {
                             }
                         }
                     };
+                    if(userStrength != undefined){
+                        var kda = ((userStrength.bullup_strength_k + userStrength.bullup_strength_a) / (userStrength.bullup_strength_d + 1.2)).toFixed(1);
+                        feedback.extension.strength = {
+                            kda: kda,
+                            averageGoldEarned: userStrength.bullup_strength_gold,
+                            averageTurretsKilled: userStrength.bullup_strength_tower,
+                            averageDamage: userStrength.bullup_strength_damage,
+                            averageDamageTaken: userStrength.bullup_strength_damage_taken,
+                            averageHeal: userStrength.bullup_strength_heal,
+                            score: userStrength.bullup_strength_score
+                        }
+                    }else{
+                        feedback.extension.strength = undefined;
+                    }
+                    
                     exports.addUser(feedback.extension);
                     socket.emit('feedback', feedback);
                 });
@@ -107,7 +112,7 @@ exports.handleLogin = function (socket) {
 exports.handleRegister = function (socket) {
     socket.on('register', function (userInfo) {
         logger.listenerLog('register');
-        dbUtil.findUserByNick(userInfo.userName, function (user) {
+        dbUtil.findUserByAccount(userInfo.userAccount, function (user) {
             if (user) {
                 // 如果该用户存在
                 socket.emit('feedback', {
@@ -117,23 +122,21 @@ exports.handleRegister = function (socket) {
                     extension: null
                 });
             } else {
-                dbUtil.addUser(userInfo, function (userId) {
-
+                dbUtil.addUser(userInfo, function (userAddRes) {
                     socket.emit('feedback', {
                         errorCode: 0,
                         text: '注册成功',
                         type: 'REGISTERRESULT',
                         extension: {
-                            name: userInfo.userName,
-                            userId: userId,
-                            avatarId: 1,
+                            userAccount: userInfo.userAccount,
+                            userNickname: userInfo.userNickname,
+                            userId: userAddRes.userId,
+                            userIconId: 1,
                         }
                     });
                 });
             }
         });
-
-
     });
 }
 
@@ -142,16 +145,17 @@ exports.handleRegister = function (socket) {
  * @param socket
  */
 exports.handleInviteFriend = function (socket) {
-    socket.on('inviteFriend', function (invitePackage) {
-        logger.listenerLog('inviteFriend');
-        if (socketProxy.isUserOnline(invitePackage.userId)) {
-            var dstSocket = socketProxy.mapUserIdToSocket(invitePackage.userId);
-            dstSocket.emit('friendInvitation', invitePackage);
+    socket.on('message', function (inviteMessage) {
+        console.log('invite : ' + inviteMessage);
+        logger.listenerLog('message');
+        if (socketProxy.isUserOnline(inviteMessage.userId)) {
+            var dstSocket = socketProxy.mapUserIdToSocket(inviteMessage.userId);
+            dstSocket.emit('message', inviteMessage);
         } else {
             socket.emit('feedback', {
                 errorCode: 1,
                 type: 'INVITERESULT',
-                text: invitePackage.userName + '邀请失败'
+                text: inviteMessage.userName + '邀请失败,该用户已经下线'
             });
         }
     })
@@ -180,7 +184,7 @@ exports.handleUserInviteResult = function (io, socket) {
             //    socket.emit('teamInfoUpdate', teamProxy.mapTeamNameToUnformedTeam(teamName));
 
             // 向房间内的所有用户广播当前队伍信息
-            io.in(teamName).emit('teamInfoUpdate', teamProxy.mapTeamNameToUnformedTeam(teamName));
+            io.sockets.in(teamName).emit('teamInfoUpdate', teamProxy.mapTeamNameToUnformedTeam(teamName));
         } else if (feedback.errorCode == 1) {
             // 用户拒绝邀请
             var hostId = feedback.extension.hostId;
@@ -215,7 +219,6 @@ exports.handleRankRequest = function (socket){
     });
 }
 
-
 exports.handleLOLBind = function(socket){
     socket.on('lolBindRequest',function(request){
         var userId = request.userId;
@@ -224,38 +227,114 @@ exports.handleLOLBind = function(socket){
         var lolArea = request.lolArea;
         async.waterfall([
             function(callback){
-                dbUtil.validateBindInfo(userId, lolAccount, function(bindValidity){
+                console.log(userId);
+                dbUtil.validateBindInfo(userId, lolAccount, lolArea, function(bindValidityResult){
                     //如果该用户在该大区已绑定了账号  或者该大区的账号已被绑定  则拒绝绑定
                     var feedback = {};
-                    if(bindValidity.value != 'true'){
+                    if(bindValidityResult.value != 'true'){
                         feedback.text = '绑定失败';
                         feedback.type = 'LOLBINDRESULT';
-                        switch(bindValidity.code){
+                        switch(bindValidityResult.errorCode){
                             case 1:{
                                 feedback.errorCode = 1;
                                 feedback.extension = {};
-                                feedback.extensio.tips = '该英雄联盟账号已被绑定';
+                                feedback.extension.tips = '该英雄联盟账号已被绑定';
                                 break;
                             }
                             case 2:{
                                 feedback.errorCode = 2;
                                 feedback.extension = {};
-                                feedback.extensio.tips = '您已经绑定了英雄联盟账号';
+                                feedback.extension.tips = '您在该区已经绑定了英雄联盟账号';
                                 break;
                             }
                         }
-                        socket.emit('feedback', feedback);
-                        callback('error', null);
+                        callback('error', feedback);
                     }else{
                         callback(null, null);
                     }
                 });   
             },
             function(blankData, callback){
-                
+                dbUtil.insertBindInfo(userId, lolAccount, lolNickname, lolArea, function(bindResult){
+                    if(bindResult.errorCode == 0){
+                        var feedback = {
+                            errorCode: 0,
+                            type: 'LOLBINDRESULT',
+                            text: '绑定成功',
+                            extension: {
+                                tips: '绑定成功',
+                                userId: userId,
+                                lolNickname: lolNickname,
+                                lolArea : lolArea
+                            }
+                        };
+                        callback(null, feedback);
+                    }else{
+                        var feedback = {
+                            errorCode: 3,
+                            type: 'LOLBINDRESULT',
+                            text: '绑定失败',
+                            extension: {
+                                tips: '服务器异常，请稍后再试' 
+                            }
+                        }
+                        callback(null, feedback);
+                    }
+                });
             }
-        ],function(err,result){
+        ],function(err,feedback){
+            if(feedback.errorCode == 0){
+                //更新用户战力表
+                var bindInfo = feedback.extension;
+                dbUtil.addStrengthInfo(bindInfo, function(result){
+                    console.log("result" + result);
+                });
+            }
+            socket.emit('feedback', feedback);
+        });
+    });
+}
+/**个人中心 */
+exports.handlePersonalCenterRequest = function(socket){
+    socket.on('pesonalCenterRequest', function(request){
+        console.log('result:'+JSON.stringify(request));
+        //dbUtil.getPersonalCenterInfoByUserId();
+        dbUtil.getPersonalCenterInfoByUserId(request.userId,function(queryResult){
+            console.log("queryResult"+JSON.stringify(queryResult));
+            var feedback = {};
+            if(queryResult != null && queryResult != undefined){
+                feedback.errorCode = 0,
+                feedback.type = 'PESONALCENTERRESULT',
+                feedback.text = '个人中心加载成功'
+                var data = {};
+                //填充data
+                data.userId = queryResult.userInfo[0].user_id;
+                
+                console.log('id..'+queryResult.user_id);
+                //data.XXX = queryResult.XXX;
+                data.userAccount=queryResult.userInfo[0].user_account;
+                data.name=queryResult.userInfo[0].user_nickname;
+                data.payAccountId=queryResult.Id.bullup_payment_account_id;
+                data.paymentType=queryResult.paymentHistory.bullup_paymet_type;
+                data.paymentAccount=queryResult.paymentHistory.bullup_account;
+                data.lolInfoId=queryResult.info[0].lol_info_id;
+                data.UserlolAccount=queryResult.info[0].user_lol_account;
+                data.UserlolNickname=queryResult.info[0].user_lol_nickname;
+                data.UserlolArea=queryResult.info[0].user_lol_area;
+                
+                
+                feedback.extension = data;
+              //  console.log('feedback:'+JSON.stringify(data));
+            }else{
+                feedback.errorCode = 1,
+                feedback.type = 'PESONALCENTERRESULT',
+                feedback.text = '个人中心加载失败',
+                feedback.extension = null
+            }
+            socket.emit('feedback', feedback);
+            console.log('feedback111:'+JSON.stringify(feedback));
 
         });
     });
+
 }

@@ -2,7 +2,7 @@ var request = require('request');
 var async = require('async');
 var lolcfg = require('./lolcfg.js');
 
-var apiKey =  "RGAPI-b9c26d5f-982a-4297-9156-3e403b530998";
+var apiKey =  "RGAPI-522fe8d9-1dbb-4ea9-bae0-c964fb1e2cc5";
 
 function getItemsStaticData(callback){
     var options = {
@@ -57,7 +57,7 @@ function getSummonerByName(name, callback){
     });
 }
 
-function getRecentMatchesListByAccountId(accountId, startTimeStr, endTimeStr, callback){
+function getMatchesListByAccountId(accountId, startTimeStr, endTimeStr, callback){
     var startTime = (new Date(startTimeStr)).getTime(); 
     var endTime = (new Date(endTimeStr)).getTime();
     var options = {
@@ -93,7 +93,26 @@ function getMatchDetailsByGameId(gameId, callback){
     });
 }
 
-exports.getBullupMatchDetailsBySummonerName = function(name,startTime,endTime,callback){
+exports.getRecentMatchDetailsBySummonerName = function(name, callback){
+    getSummonerByName(name, function(summonerInfo){
+        var options = {
+            url: 'https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/'+ summonerInfo.accountId +'/recent',
+            headers: {
+                "Origin": "https://developer.riotgames.com",
+                "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Riot-Token": apiKey,
+                "Accept-Language": "zh-CN,zh;q=0.8",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36"
+            }
+        };
+        request(options, function(error, response, body){
+            bodyObj = JSON.parse(body);
+            callback(bodyObj);
+        }); 
+    });
+}
+
+exports.getMatchDetailsBySummonerName = function(name,startTime,endTime,callback){
     async.waterfall([
         function(done){
             getSummonerByName(name, function(summoner){
@@ -101,7 +120,7 @@ exports.getBullupMatchDetailsBySummonerName = function(name,startTime,endTime,ca
             });
         },
         function(summoner, done){
-            getRecentMatchesListByAccountId(summoner.accountId, startTime, endTime, function(gameList){
+            getMatchesListByAccountId(summoner.accountId, startTime, endTime, function(gameList){
                 done(null, summoner, gameList);
             });
         },

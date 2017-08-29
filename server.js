@@ -2,7 +2,7 @@ var io = require('socket.io')();
 var logger = require('./util/logutil');
 
 // 代理
-var userProxy = require('./proxy/userproxy.js');
+var userProxy = require('./proxy/userproxy.js'); 
 var teamProxy = require('./proxy/teamProxy.js');
 var socketProxy = require('./proxy/socketproxy.js');
 var battleProxy = require('./proxy/battleProxy.js');
@@ -14,9 +14,8 @@ socketProxy.init();
 battleProxy.init();
 
 
-io.on('connection', function (socket) {
+io.on('connection', function(socket) {
     logger.levelMsgLog(0, 'User ' + socket.id + ' connected!');
-
     userProxy.handleLogin(socket);
 
     userProxy.handleRegister(socket);
@@ -27,13 +26,19 @@ io.on('connection', function (socket) {
 
     userProxy.handleUserInviteResult(io, socket);
 
-    teamProxy.handleTeamEstablish(socket);
+    userProxy.handleLOLBind(socket); 
 
-    teamProxy.handleTeamForm(io, socket);
+    userProxy.handlePersonalCenterRequest(socket);
+  
+    teamProxy.handleRoomEstablish(socket);
+
+    teamProxy.handleTeamEstablish(io, socket);
 
     teamProxy.handleVersusLobbyRefresh(socket);
 
     teamProxy.handleTeamDetails(socket);
+
+    teamProxy.handleRefreshFormedBattleRoom(socket);
 
     battleProxy.handleBattleInvite(socket);
 

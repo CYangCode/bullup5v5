@@ -28,4 +28,8 @@ $().ready(function(){
 
 	$('.collapsible').collapsible();
 
+	$('#match-bet-modal').modal();
+
+	$('#fight-bet-modal').modal();
+
 });

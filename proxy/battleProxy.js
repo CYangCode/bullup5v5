@@ -19,9 +19,14 @@ exports.handleBattleInvite = function (socket) {
             var captainId = hostTeam.captain.userId;
             //获取对战请求中host team的socket
             var dstSocket = socketProxy.mapUserIdToSocket(captainId);
-
+            var message = {};
+            message.messageType = 'inviteBattle';
+            message.team = challengerTeam;
+            message.hostTeam = hostTeam;
+            message.messageText = '对战请求';
+            message.name = challengerTeam.captain.name;
             //向host team发送挑战队伍信息
-            dstSocket.emit('battleRequest', challengerTeam);
+            dstSocket.emit('message', message);
         } else {
             //失败向发出请求的用户返回失败信息
             socket.emti('feeback', {
@@ -35,12 +40,12 @@ exports.handleBattleInvite = function (socket) {
 }
 
 exports.handleBattleInviteResult = function (io, socket) {
-    socket.on('battleInviteResult', function (feedback) {
+    socket.on('inviteBattleResult', function (feedback) {
         // 如果接受了邀请
         if (feedback.errorCode == 0) {
             // 向两方队伍中的所有人进行广播
-            var challengerTeam = teamProxy.mapTeamNameToFormedTeam(feedback.extension.challengerTeamName);
-            var hostTeam = teamProxy.mapTeamNameToFormedTeam(feedback.extension.hostTeamName);
+            var challengerTeam = teamProxy.mapTeamNameToFormedTeam(feedback.extension.challengerTeam.roomName);
+            var hostTeam = teamProxy.mapTeamNameToFormedTeam(feedback.extension.hostTeam.roomName);
             var currentTime = require('moment')().format('YYYYMMDDHHmmss');
 
             // 更新队伍状态
@@ -77,7 +82,8 @@ exports.handleBattleInviteResult = function (io, socket) {
 
             // 向该对局中所有的用户广播对局信息
             io.sockets.in(battle.battleName).emit('battleInfo', battle);
-
+            io.sockets.broadcast.in(battle.battleName).emit('battleInfo', battle);
+            io.in(battle.battleName).emit('battleInfo', battle);
             // 向对局中所有用户广播要建立的lol房间信息
             io.sockets.in(battle.battleName).emit('lolRoomEstablish', {
                 roomName: 'BULLUP' + (new Date).valueOf(),
@@ -104,3 +110,4 @@ exports.handleLOLRoomEstablished = function (io, socket) {
         io.sockets.in(battleInfo.battleName).emit('lolRoomEstablished');
     })
 }
+
